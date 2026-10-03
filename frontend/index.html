@@ -237,18 +237,19 @@ async function loadRx() {
     const meds = p.medicines.map(x => `<li>${esc(x.medicine_name)}${x.dosage ? ' — ' + esc(x.dosage) : ''}${x.frequency ? ', ' + esc(x.frequency) : ''}${x.duration ? ', ' + esc(x.duration) : ''}${x.instructions ? '<br><small>' + esc(x.instructions) + '</small>' : ''}</li>`).join('');
     const docUrl = `/prescriptions/${p.id}/document`;
     art.dataset.search = [
-      p.prescription_date, p.doctor_name, p.hospital_name, p.diagnosis, p.notes,
+      p.prescription_date, p.created_at, p.doctor_name, p.hospital_name, p.diagnosis, p.notes,
       p.ocr_text, ...p.medicines.flatMap(x => [x.medicine_name, x.dosage, x.frequency, x.duration, x.instructions]),
     ].filter(Boolean).join(' ').toLowerCase();
+    const shownDate = p.prescription_date || (p.created_at || '').slice(0, 10) || 'Undated';
     art.innerHTML = `
-      <h3>${esc(p.prescription_date ?? 'Undated')}${p.doctor_name ? ' · ' + esc(p.doctor_name) : ''}</h3>
+      <h3>${esc(shownDate)}${p.doctor_name ? ' · ' + esc(p.doctor_name) : ''}</h3>
       <p class="meta">${[p.hospital_name, p.diagnosis].filter(Boolean).map(esc).join(' · ')}</p>
       <div class="rx-media">
         <img src="${docUrl}" alt="Prescription document" loading="lazy"
              onerror="this.outerHTML='<a href=&quot;${docUrl}&quot;>Open document</a>'">
       </div>
       ${meds ? `<ul class="meds">${meds}</ul>` : ''}
-      ${p.ocr_text ? `<details class="ocr"><summary>OCR text</summary><pre>${esc(p.ocr_text)}</pre></details>` : ''}
+      ${p.ocr_text ? `<details class="ocr" open><summary>Extracted text</summary><pre>${esc(p.ocr_text)}</pre></details>` : ''}
       ${p.notes ? `<p class="${p.notes.startsWith('OCR failed') ? 'warn' : 'meta'}">${esc(p.notes)}</p>` : ''}
       <form class="rx-edit" hidden>
         <input type="date" name="prescription_date" value="${p.prescription_date ?? ''}" aria-label="Prescription date">

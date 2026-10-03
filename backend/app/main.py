@@ -197,6 +197,7 @@ def get_member_prescriptions(member_id: int):
                 {
                     "id": prescription.id,
                     "prescription_date": prescription.prescription_date,
+                    "created_at": prescription.created_at,
                     "doctor_name": prescription.doctor_name,
                     "hospital_name": prescription.hospital_name,
                     "diagnosis": prescription.diagnosis,
@@ -236,6 +237,8 @@ def upload_prescription(
                 rx_date = date.fromisoformat(prescription_date)
             except ValueError:
                 raise HTTPException(400, "prescription_date must be YYYY-MM-DD")
+        if rx_date is None:
+            rx_date = date.today()  # upload date; user can PATCH a different one
 
         allowed_types = {
             "image/jpeg",

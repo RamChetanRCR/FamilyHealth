@@ -109,9 +109,13 @@ def test_upload_missing_member():
 
 
 def test_upload_with_prescription_date():
+    from datetime import date
+
     mid = make_member("DATED")
     res = upload(mid)
     assert res.status_code == 200
+    # no date given → stores the upload date, never null
+    assert res.json()["prescription_date"] == date.today().isoformat()
 
     res = client.post(
         f"/family-members/{mid}/prescriptions/upload",
@@ -121,7 +125,8 @@ def test_upload_with_prescription_date():
     assert res.status_code == 200
     assert res.json()["prescription_date"] == "2026-09-15"
     rx = client.get(f"/family-members/{mid}/prescriptions").json()
-    assert rx[0]["prescription_date"] == "2026-09-15"
+    assert any(r["prescription_date"] == "2026-09-15" for r in rx)
+    assert all(r["created_at"] for r in rx)
 
 
 def test_upload_invalid_date_rejected():
