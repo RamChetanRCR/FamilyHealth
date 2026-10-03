@@ -57,6 +57,7 @@ class Prescription(Base):
         DateTime,
         default=datetime.utcnow,
     )
+    ocr_text: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class PrescriptionMedicine(Base):

@@ -11,7 +11,10 @@ API = os.getenv("API_URL", "http://127.0.0.1:18100")
 HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "18080"))
 ROOT = pathlib.Path(__file__).parent
-PREFIXES = ("/family-members", "/health", "/docs", "/redoc", "/openapi.json")
+PREFIXES = (
+    "/family-members", "/prescriptions", "/inventory",
+    "/health", "/docs", "/redoc", "/openapi.json",
+)
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -46,6 +49,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             super().do_GET()
 
     def do_POST(self):
+        self._proxy()
+
+    def do_PATCH(self):
+        self._proxy()
+
+    def do_DELETE(self):
         self._proxy()
 
     def log_message(self, *args):

@@ -1,17 +1,18 @@
 from datetime import date
+from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, UploadFile, File, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import delete, select
 
 from app.database import SessionLocal, engine
-from app.storage import save_document
-from app.ocr import extract_text
-from app.storage import save_document
+from app.storage import save_document, STORAGE_DIR
 from app.ocr import extract_text
 from app.models import (
     Base,
     FamilyMember,
+    MedicineInventory,
     Prescription,
     PrescriptionMedicine,
 )
@@ -43,6 +44,14 @@ class PrescriptionCreate(BaseModel):
     diagnosis: str | None = None
     notes: str | None = None
     medicines: list[PrescriptionMedicineCreate] = Field(default_factory=list)
+
+
+class MedicineInventoryCreate(BaseModel):
+    medicine_name: str
+    quantity: int | None = None
+    unit: str | None = None
+    expiry_date: date | None = None
+    source: str = "manual"
 
 
 @app.get("/health")
@@ -192,6 +201,7 @@ def get_member_prescriptions(member_id: int):
                     "hospital_name": prescription.hospital_name,
                     "diagnosis": prescription.diagnosis,
                     "notes": prescription.notes,
+                    "ocr_text": prescription.ocr_text,
                     "medicines": [
                         {
                             "medicine_name": medicine.medicine_name,
@@ -212,12 +222,20 @@ def get_member_prescriptions(member_id: int):
 def upload_prescription(
     member_id: int,
     file: UploadFile = File(...),
+    prescription_date: str | None = Form(None),
 ):
     with SessionLocal() as session:
         member = session.get(FamilyMember, member_id)
 
         if member is None:
             raise HTTPException(404, "Family member not found")
+
+        rx_date = None
+        if prescription_date:
+            try:
+                rx_date = date.fromisoformat(prescription_date)
+            except ValueError:
+                raise HTTPException(400, "prescription_date must be YYYY-MM-DD")
 
         allowed_types = {
             "image/jpeg",
@@ -233,29 +251,34 @@ def upload_prescription(
 
         path = save_document(file)
 
-        ocr_text = ""
+        # ponytail: broad except — any OCR failure must keep the document and
+        # the record; narrow to (PIL.UnidentifiedImageError,
+        # pytesseract.TesseractNotFoundError) once failure types are audited.
+        ocr_text = None
+        ocr_error = None
         if file.content_type.startswith("image/"):
-            ocr_text = extract_text(path)
+            try:
+                ocr_text = extract_text(path)
+            except Exception as exc:
+                ocr_error = str(exc) or type(exc).__name__
+
+        notes = None
+        if ocr_error:
+            notes = f"OCR failed: {ocr_error}"  # kept for audit/reprocessing
+        elif file.content_type == "application/pdf":
+            notes = "PDF stored; text extraction not implemented yet."
 
         prescription = Prescription(
             family_member_id=member_id,
             document_path=path,
-            notes="OCR text extracted during upload.",
+            prescription_date=rx_date,
+            ocr_text=ocr_text,
+            notes=notes,
         )
 
         session.add(prescription)
         session.commit()
         session.refresh(prescription)
-
-        with open(path, "rb"):
-            pass
-
-        session.execute(
-            Prescription.__table__.update()
-            .where(Prescription.id == prescription.id)
-            .values(ocr_text=ocr_text)
-        )
-        session.commit()
 
         return {
             "message": "Prescription uploaded",
@@ -263,5 +286,114 @@ def upload_prescription(
             "prescription_id": prescription.id,
             "filename": file.filename,
             "stored_path": path,
+            "prescription_date": prescription.prescription_date,
             "ocr_text": ocr_text,
+            "ocr_error": ocr_error,
+        }
+
+
+ALLOWED_DOCUMENT_EXTENSIONS = {".jpg", ".jpeg", ".png", ".pdf"}
+
+
+class PrescriptionUpdate(BaseModel):
+    prescription_date: date | None = None
+    doctor_name: str | None = None
+    hospital_name: str | None = None
+    diagnosis: str | None = None
+    ocr_text: str | None = None
+
+
+@app.patch("/prescriptions/{prescription_id}")
+def update_prescription(prescription_id: int, update: PrescriptionUpdate):
+    with SessionLocal() as session:
+        prescription = session.get(Prescription, prescription_id)
+        if prescription is None:
+            raise HTTPException(404, "Prescription not found")
+
+        for field, value in update.model_dump(exclude_unset=True).items():
+            setattr(prescription, field, value)
+        session.commit()
+        return {"id": prescription_id, "updated": sorted(update.model_dump(exclude_unset=True))}
+
+
+@app.delete("/prescriptions/{prescription_id}")
+def delete_prescription(prescription_id: int):
+    with SessionLocal() as session:
+        prescription = session.get(Prescription, prescription_id)
+        if prescription is None:
+            raise HTTPException(404, "Prescription not found")
+
+        document_path = Path(prescription.document_path).resolve()
+        session.execute(
+            delete(PrescriptionMedicine).where(
+                PrescriptionMedicine.prescription_id == prescription_id
+            )
+        )
+        session.delete(prescription)
+        session.commit()
+
+    # remove the stored file only if it is inside STORAGE_DIR
+    if document_path.is_relative_to(STORAGE_DIR.resolve()):
+        document_path.unlink(missing_ok=True)
+    return {"deleted": prescription_id}
+
+
+@app.get("/prescriptions/{prescription_id}/document")
+def get_prescription_document(prescription_id: int):
+    with SessionLocal() as session:
+        prescription = session.get(Prescription, prescription_id)
+        if prescription is None:
+            raise HTTPException(404, "Prescription not found")
+
+        path = Path(prescription.document_path).resolve()
+        # never serve anything outside STORAGE_DIR or with a dangerous suffix
+        if (
+            path.suffix.lower() not in ALLOWED_DOCUMENT_EXTENSIONS
+            or not path.is_relative_to(STORAGE_DIR.resolve())
+            or not path.is_file()
+        ):
+            raise HTTPException(404, "Document not available")
+
+        return FileResponse(path, headers={"X-Content-Type-Options": "nosniff"})
+
+
+@app.get("/inventory")
+def list_inventory():
+    with SessionLocal() as session:
+        rows = session.scalars(
+            select(MedicineInventory).order_by(MedicineInventory.medicine_name)
+        ).all()
+        return [
+            {
+                "id": row.id,
+                "medicine_name": row.medicine_name,
+                "quantity": row.quantity,
+                "unit": row.unit,
+                "expiry_date": row.expiry_date,
+                "source": row.source,
+            }
+            for row in rows
+        ]
+
+
+@app.post("/inventory", status_code=201)
+def add_inventory_item(item: MedicineInventoryCreate):
+    with SessionLocal() as session:
+        row = MedicineInventory(
+            medicine_name=item.medicine_name,
+            quantity=item.quantity,
+            unit=item.unit,
+            expiry_date=item.expiry_date,
+            source=item.source,
+        )
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+        return {
+            "id": row.id,
+            "medicine_name": row.medicine_name,
+            "quantity": row.quantity,
+            "unit": row.unit,
+            "expiry_date": row.expiry_date,
+            "source": row.source,
         }

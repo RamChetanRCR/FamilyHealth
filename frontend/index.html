@@ -5,49 +5,166 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Family Health</title>
 <style>
-  :root { color-scheme: light dark; }
-  body { font-family: system-ui, sans-serif; max-width: 44rem; margin: 2rem auto; padding: 0 1rem; }
-  section { border: 1px solid #8884; border-radius: .5rem; padding: 1rem; margin-bottom: 1rem; }
-  form { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
-  input, select, button { font: inherit; padding: .4rem .6rem; }
-  ul#members { list-style: none; padding: 0; margin: 0; }
-  ul#members li { margin: .25rem 0; }
-  ul#members button { width: 100%; text-align: left; cursor: pointer; background: transparent; border: 1px solid #8886; border-radius: .4rem; }
-  ul#members button[aria-current="true"] { border-color: currentColor; font-weight: 600; }
-  article { border-top: 1px solid #8884; padding: .75rem 0; }
-  article h3 { margin: 0 0 .25rem; }
-  article .meta, article .meds { font-size: .9rem; opacity: .85; }
-  .meds li { margin: .15rem 0; }
-  #status { font-size: .9rem; min-height: 1.2em; }
+  /* ponytail: design tokens instead of a framework — light/dark comes from
+     two variable blocks, everything else is plain CSS. */
+  :root {
+    color-scheme: light dark;
+    --bg: #f5f6f8; --card: #ffffff; --text: #1a1d21; --muted: #5c6470;
+    --line: #e2e5ea; --accent: #1668c7; --on-accent: #ffffff;
+    --ok: #157347; --err: #b3261e; --radius: .6rem;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #101317; --card: #191d23; --text: #e8eaee; --muted: #9aa3af;
+      --line: #2a3038; --accent: #6aa9f4; --on-accent: #0d1524;
+      --ok: #5ec48e; --err: #f2857b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, sans-serif; background: var(--bg); color: var(--text);
+    max-width: 46rem; margin: 0 auto; padding: 1.25rem 1rem 3rem; line-height: 1.45;
+  }
+  header { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
+  h1 { font-size: 1.35rem; margin: .75rem 0; }
+  h2 { font-size: 1rem; margin: 0 0 .75rem; }
+  section {
+    background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 1rem; margin-bottom: 1rem;
+  }
+  #status { font-size: .9rem; margin: 0 0 .5rem; min-height: 1.2em; }
+  #status:not(:empty) { display: inline-block; padding: .45rem .75rem; border: 1px solid var(--line); border-radius: var(--radius); background: var(--card); }
+  #status.ok { color: var(--ok); border-color: var(--ok); }
+  #status.err { color: var(--err); border-color: var(--err); }
+
+  form { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .75rem; align-items: center; }
+  input, select, button {
+    font: inherit; color: var(--text); background: var(--card);
+    border: 1px solid var(--line); border-radius: var(--radius); padding: .5rem .7rem;
+  }
+  input:focus-visible, select:focus-visible, button:focus-visible, summary:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+  input[type=file]::file-selector-button {
+    font: inherit; border: 1px solid var(--line); border-radius: var(--radius);
+    background: var(--bg); padding: .45rem .7rem; cursor: pointer; margin-right: .5rem;
+  }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  button:hover { filter: brightness(.97); }
+
+  #members { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: .5rem; }
+  #members button { border-radius: 999px; padding: .45rem .95rem; background: var(--bg); }
+  #members button[aria-current="true"] { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+
+  #upload-form { border: 1.5px dashed var(--line); background: var(--bg); border-radius: var(--radius); padding: .75rem; margin-top: .75rem; }
+  .empty { color: var(--muted); font-style: italic; margin: .75rem 0 0; }
+
+  article.rx {
+    border: 1px solid var(--line); border-radius: var(--radius);
+    padding: .85rem 1rem; margin: .6rem 0; background: var(--bg);
+  }
+  article.rx h3 { margin: 0 0 .2rem; font-size: 1rem; }
+  .meta { color: var(--muted); font-size: .88rem; margin: .15rem 0; }
+  .meds { list-style: none; padding: 0; margin: .5rem 0 0; font-size: .92rem; }
+  .meds li { padding: .3rem 0; border-top: 1px dashed var(--line); }
+  .meds small { color: var(--muted); }
+  details.ocr { margin-top: .5rem; font-size: .88rem; }
+  details.ocr summary { cursor: pointer; color: var(--accent); }
+  details.ocr pre {
+    white-space: pre-wrap; background: var(--card); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: .6rem; margin: .35rem 0 0; overflow-x: auto;
+  }
+  .warn { color: var(--err); font-size: .88rem; }
+
+  .rx-head { display: flex; justify-content: space-between; align-items: center; gap: .5rem; flex-wrap: wrap; }
+  .rx-media img {
+    max-width: 100%; max-height: 22rem; border: 1px solid var(--line);
+    border-radius: var(--radius); margin-top: .5rem; display: block; background: var(--card);
+  }
+  .rx-media a { font-size: .88rem; }
+  #rx-search { width: 100%; margin-top: .75rem; }
+
+  #inv-list { list-style: none; padding: 0; margin: 0; }
+  #inv-list li {
+    display: flex; justify-content: space-between; gap: .5rem; flex-wrap: wrap;
+    padding: .45rem 0; border-bottom: 1px dashed var(--line); font-size: .95rem;
+  }
+  #inv-list li:last-child { border-bottom: none; }
+  #inv-list .qty { color: var(--muted); }
+  .expired { color: var(--err); font-weight: 600; }
+
+  .rx-actions { display: flex; gap: .4rem; justify-content: flex-end; margin-top: .5rem; }
+  button.mini { font-size: .82rem; padding: .25rem .6rem; }
+  button.danger { color: var(--err); border-color: var(--err); }
+  .rx-edit { display: grid; gap: .45rem; margin-top: .6rem; padding-top: .6rem; border-top: 1px dashed var(--line); }
+  .rx-edit input, .rx-edit textarea { width: 100%; }
+  .rx-edit textarea {
+    font-family: ui-monospace, monospace; font-size: .85rem; resize: vertical;
+    background: var(--card); color: var(--text); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: .5rem .7rem;
+  }
+
+  @media print {
+    body { background: #fff; color: #000; max-width: none; padding: 0; }
+    header, #members-block, #member-form, #upload-form, #rx-search,
+    #print-btn, #inv-block, #status, #members-empty { display: none !important; }
+    section { border: none; padding: 0; background: #fff; }
+    #rx[hidden] { display: none !important; }
+    article.rx { border: 1px solid #999; break-inside: avoid; background: #fff; }
+    details.ocr { display: none; }
+    .rx-media img { max-height: 14rem; }
+  }
 </style>
 </head>
 <body>
-<h1>Family Health</h1>
-<p id="status"></p>
+<header>
+  <h1>Family Health</h1>
+  <p id="status" role="status" aria-live="polite"></p>
+</header>
 
-<section>
-  <h2>Members</h2>
+<section id="members-block">
+  <h2>Family members</h2>
   <ul id="members"></ul>
+  <p class="empty" id="members-empty" hidden>No members yet — add the first one.</p>
   <form id="member-form">
-    <input name="name" placeholder="Name" required>
-    <input name="date_of_birth" type="date" title="Date of birth">
-    <select name="gender" title="Gender">
+    <input name="name" placeholder="Name" aria-label="Name" required>
+    <input name="date_of_birth" type="date" aria-label="Date of birth" title="Date of birth">
+    <select name="gender" aria-label="Gender" title="Gender">
       <option value="">Gender…</option>
       <option>female</option>
       <option>male</option>
       <option>other</option>
     </select>
-    <button>Add member</button>
+    <button class="primary">Add member</button>
   </form>
 </section>
 
 <section id="rx" hidden>
-  <h2 id="rx-title">Prescriptions</h2>
+  <div class="rx-head">
+    <h2 id="rx-title" style="margin:0">Prescriptions</h2>
+    <button id="print-btn" class="no-print" type="button" onclick="window.print()">Print for doctor</button>
+  </div>
   <form id="upload-form">
-    <input type="file" name="file" accept="image/jpeg,image/png,application/pdf" required>
-    <button>Upload</button>
+    <input type="date" name="prescription_date" id="rx-date" aria-label="Prescription date" title="Prescription date">
+    <input type="file" name="file" accept="image/jpeg,image/png,application/pdf" required aria-label="Prescription file">
+    <button class="primary">Upload</button>
   </form>
+  <input id="rx-search" placeholder="Search this member's prescriptions…" aria-label="Search prescriptions" hidden>
   <div id="prescriptions"></div>
+</section>
+
+<section id="inv-block">
+  <h2>Home medicine inventory</h2>
+  <ul id="inv-list"></ul>
+  <p class="empty" id="inv-empty" hidden>No medicines at home yet.</p>
+  <form id="inv-form">
+    <input name="medicine_name" placeholder="Medicine name" aria-label="Medicine name" required>
+    <input name="quantity" type="number" min="0" placeholder="Qty" aria-label="Quantity" style="width:6rem">
+    <input name="unit" placeholder="Unit (tablets…)" aria-label="Unit" style="width:9rem">
+    <input name="expiry_date" type="date" aria-label="Expiry date" title="Expiry date">
+    <button class="primary">Add</button>
+  </form>
 </section>
 
 <script>
@@ -64,18 +181,21 @@ const post = (url, body, raw) => fetch(url, {
 });
 
 function status(msg, isErr) {
-  $('#status').textContent = msg;
-  $('#status').style.color = isErr ? '#c00' : '';
+  const el = $('#status');
+  el.textContent = msg;
+  el.className = msg ? (isErr ? 'err' : 'ok') : '';
 }
 
 async function loadMembers() {
   const members = await (await fetch('/family-members')).json();
   const ul = $('#members');
   ul.innerHTML = '';
+  $('#members-empty').hidden = members.length > 0;
   for (const m of members) {
     const li = document.createElement('li');
     const b = document.createElement('button');
-    b.textContent = `${m.name}${m.date_of_birth ? ' · born ' + m.date_of_birth : ''}`;
+    b.textContent = m.name;
+    b.title = [m.date_of_birth && `born ${m.date_of_birth}`, m.gender].filter(Boolean).join(' · ');
     b.setAttribute('aria-current', String(current?.id === m.id));
     b.onclick = () => select(m);
     li.append(b);
@@ -98,6 +218,9 @@ async function select(m) {
   current = m;
   $('#rx').hidden = false;
   $('#rx-title').textContent = `Prescriptions — ${m.name}`;
+  $('#rx-search').hidden = false;
+  $('#rx-search').value = '';
+  if (!$('#rx-date').value) $('#rx-date').value = new Date().toISOString().slice(0, 10);
   await loadMembers();
   await loadRx();
 }
@@ -107,18 +230,106 @@ async function loadRx() {
   if (!res.ok) return status(`Load failed: ${await res.text()}`, true);
   const list = await res.json();
   const box = $('#prescriptions');
-  box.innerHTML = list.length ? '' : '<p class="meta">No prescriptions yet.</p>';
+  box.innerHTML = list.length ? '' : '<p class="empty">No prescriptions yet.</p>';
   for (const p of list) {
     const art = document.createElement('article');
+    art.className = 'rx';
     const meds = p.medicines.map(x => `<li>${esc(x.medicine_name)}${x.dosage ? ' — ' + esc(x.dosage) : ''}${x.frequency ? ', ' + esc(x.frequency) : ''}${x.duration ? ', ' + esc(x.duration) : ''}${x.instructions ? '<br><small>' + esc(x.instructions) + '</small>' : ''}</li>`).join('');
+    const docUrl = `/prescriptions/${p.id}/document`;
+    art.dataset.search = [
+      p.prescription_date, p.doctor_name, p.hospital_name, p.diagnosis, p.notes,
+      p.ocr_text, ...p.medicines.flatMap(x => [x.medicine_name, x.dosage, x.frequency, x.duration, x.instructions]),
+    ].filter(Boolean).join(' ').toLowerCase();
     art.innerHTML = `
       <h3>${esc(p.prescription_date ?? 'Undated')}${p.doctor_name ? ' · ' + esc(p.doctor_name) : ''}</h3>
       <p class="meta">${[p.hospital_name, p.diagnosis].filter(Boolean).map(esc).join(' · ')}</p>
+      <div class="rx-media">
+        <img src="${docUrl}" alt="Prescription document" loading="lazy"
+             onerror="this.outerHTML='<a href=&quot;${docUrl}&quot;>Open document</a>'">
+      </div>
       ${meds ? `<ul class="meds">${meds}</ul>` : ''}
-      ${p.notes ? `<p class="meta">${esc(p.notes)}</p>` : ''}`;
+      ${p.ocr_text ? `<details class="ocr"><summary>OCR text</summary><pre>${esc(p.ocr_text)}</pre></details>` : ''}
+      ${p.notes ? `<p class="${p.notes.startsWith('OCR failed') ? 'warn' : 'meta'}">${esc(p.notes)}</p>` : ''}
+      <form class="rx-edit" hidden>
+        <input type="date" name="prescription_date" value="${p.prescription_date ?? ''}" aria-label="Prescription date">
+        <input name="doctor_name" placeholder="Doctor" value="${esc(p.doctor_name ?? '')}" aria-label="Doctor">
+        <input name="hospital_name" placeholder="Hospital" value="${esc(p.hospital_name ?? '')}" aria-label="Hospital">
+        <input name="diagnosis" placeholder="Diagnosis" value="${esc(p.diagnosis ?? '')}" aria-label="Diagnosis">
+        <textarea name="ocr_text" rows="5" placeholder="Converted text — correct it here…" aria-label="Converted text">${esc(p.ocr_text ?? '')}</textarea>
+        <div class="rx-actions">
+          <button class="primary mini" type="submit">Save</button>
+          <button class="mini" type="button" data-cancel>Cancel</button>
+        </div>
+      </form>
+      <div class="rx-actions">
+        <button class="mini" type="button" data-edit>Edit</button>
+        <button class="mini danger" type="button" data-del>Delete</button>
+      </div>`;
     box.append(art);
+
+    const editForm = art.querySelector('.rx-edit');
+    art.querySelector('[data-edit]').onclick = () => { editForm.hidden = !editForm.hidden; };
+    art.querySelector('[data-cancel]').onclick = () => { editForm.hidden = true; };
+    art.querySelector('[data-del]').onclick = async () => {
+      if (!confirm('Delete this prescription and its document? This cannot be undone.')) return;
+      const res = await fetch(`/prescriptions/${p.id}`, { method: 'DELETE' });
+      if (!res.ok) return status(`Delete failed: ${await res.text()}`, true);
+      status('Prescription deleted.');
+      loadRx();
+    };
+    editForm.onsubmit = async e => {
+      e.preventDefault();
+      const body = Object.fromEntries(new FormData(e.target));
+      if (body.prescription_date === '') body.prescription_date = null;
+      const res = await fetch(`/prescriptions/${p.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) return status(`Update failed: ${await res.text()}`, true);
+      status('Prescription updated.');
+      loadRx();
+    };
+  }
+  filterRx();
+}
+
+function filterRx() {
+  const q = ($('#rx-search').value || '').trim().toLowerCase();
+  for (const art of $('#prescriptions').querySelectorAll('article'))
+    art.hidden = q !== '' && !art.dataset.search.includes(q);
+}
+
+$('#rx-search').addEventListener('input', filterRx);
+
+async function loadInventory() {
+  const rows = await (await fetch('/inventory')).json();
+  const ul = $('#inv-list');
+  ul.innerHTML = '';
+  $('#inv-empty').hidden = rows.length > 0;
+  const today = new Date().toISOString().slice(0, 10);
+  for (const r of rows) {
+    const li = document.createElement('li');
+    const expired = r.expiry_date && r.expiry_date < today;
+    li.innerHTML = `
+      <span>${esc(r.medicine_name)}</span>
+      <span class="qty">${r.quantity != null ? esc(r.quantity) + (r.unit ? ' ' + esc(r.unit) : '') : ''}
+        ${r.expiry_date ? `· exp <span class="${expired ? 'expired' : ''}">${esc(r.expiry_date)}${expired ? ' (expired)' : ''}</span>` : ''}</span>`;
+    ul.append(li);
   }
 }
+
+$('#inv-form').onsubmit = async e => {
+  e.preventDefault();
+  const body = Object.fromEntries(new FormData(e.target));
+  for (const k in body) if (body[k] === '') delete body[k];
+  if (body.quantity !== undefined) body.quantity = Number(body.quantity);
+  const res = await post('/inventory', body);
+  if (!res.ok) return status(`Add failed: ${await res.text()}`, true);
+  e.target.reset();
+  status('Added to inventory.');
+  loadInventory();
+};
 
 $('#upload-form').onsubmit = async e => {
   e.preventDefault();
@@ -126,11 +337,14 @@ $('#upload-form').onsubmit = async e => {
   const data = await res.json().catch(() => ({}));
   if (!res.ok) return status(`Upload failed: ${await res.text()}`, true);
   e.target.reset();
-  status(data.ocr_text ? `Uploaded. OCR: ${data.ocr_text.slice(0, 120)}` : 'Uploaded.');
+  if (data.ocr_error) status(`Uploaded (document saved), but OCR failed: ${data.ocr_error}`, true);
+  else if (data.ocr_text) status(`Uploaded. OCR: ${data.ocr_text.slice(0, 120)}`);
+  else status('Uploaded.');
   loadRx();
 };
 
 loadMembers().catch(() => status('Backend unreachable.', true));
+loadInventory().catch(() => {});
 </script>
 </body>
 </html>
