@@ -1,0 +1,9 @@
+# ponytail: one gitignore for everything runtime/local; split only if a
+# tool demands its own ignore semantics.
+data/
+.env
+.venv/
+__pycache__/
+*.egg-info/
+build/
+dist/

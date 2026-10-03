@@ -1,0 +1,47 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: family-health-backend
+    restart: unless-stopped
+    ports:
+      # actual port (server, spec §6) — restore when deploying:
+      # - "127.0.0.1:8100:8000"
+      # temporary dev port for now:
+      - "127.0.0.1:18100:8000"
+    depends_on:
+      - postgres
+    volumes:
+      - ${FH_DATA_DIR:-./data}/documents:/data/documents
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: family-health-frontend
+    restart: unless-stopped
+    environment:
+      # 0.0.0.0 is container-internal only (Docker DNAT needs it to publish a
+      # port). Exposure is controlled by the 127.0.0.1 on the ports mapping
+      # below — never change that left side to 0.0.0.0.
+      API_URL: http://backend:8000
+      HOST: 0.0.0.0
+      PORT: "80"
+    ports:
+      # actual port (server) — restore when deploying:
+      # - "127.0.0.1:8080:80"
+      # temporary dev port for now:
+      - "127.0.0.1:18080:80"
+    depends_on:
+      - backend
+
+  postgres:
+    image: postgres:17
+    container_name: family-health-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: family_health
+      POSTGRES_USER: health_app
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_this_later}
+    volumes:
+      - ${FH_DATA_DIR:-./data}/postgres:/var/lib/postgresql/data

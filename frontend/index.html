@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Family Health</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: system-ui, sans-serif; max-width: 44rem; margin: 2rem auto; padding: 0 1rem; }
+  section { border: 1px solid #8884; border-radius: .5rem; padding: 1rem; margin-bottom: 1rem; }
+  form { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+  input, select, button { font: inherit; padding: .4rem .6rem; }
+  ul#members { list-style: none; padding: 0; margin: 0; }
+  ul#members li { margin: .25rem 0; }
+  ul#members button { width: 100%; text-align: left; cursor: pointer; background: transparent; border: 1px solid #8886; border-radius: .4rem; }
+  ul#members button[aria-current="true"] { border-color: currentColor; font-weight: 600; }
+  article { border-top: 1px solid #8884; padding: .75rem 0; }
+  article h3 { margin: 0 0 .25rem; }
+  article .meta, article .meds { font-size: .9rem; opacity: .85; }
+  .meds li { margin: .15rem 0; }
+  #status { font-size: .9rem; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<h1>Family Health</h1>
+<p id="status"></p>
+
+<section>
+  <h2>Members</h2>
+  <ul id="members"></ul>
+  <form id="member-form">
+    <input name="name" placeholder="Name" required>
+    <input name="date_of_birth" type="date" title="Date of birth">
+    <select name="gender" title="Gender">
+      <option value="">Gender…</option>
+      <option>female</option>
+      <option>male</option>
+      <option>other</option>
+    </select>
+    <button>Add member</button>
+  </form>
+</section>
+
+<section id="rx" hidden>
+  <h2 id="rx-title">Prescriptions</h2>
+  <form id="upload-form">
+    <input type="file" name="file" accept="image/jpeg,image/png,application/pdf" required>
+    <button>Upload</button>
+  </form>
+  <div id="prescriptions"></div>
+</section>
+
+<script>
+// ponytail: vanilla fetch + innerHTML, no framework/build step. Switch to a
+// framework when this file passes ~500 lines or needs client-side routing.
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let current = null;
+
+const post = (url, body, raw) => fetch(url, {
+  method: 'POST',
+  headers: raw ? {} : {'Content-Type': 'application/json'},
+  body: raw ? body : JSON.stringify(body),
+});
+
+function status(msg, isErr) {
+  $('#status').textContent = msg;
+  $('#status').style.color = isErr ? '#c00' : '';
+}
+
+async function loadMembers() {
+  const members = await (await fetch('/family-members')).json();
+  const ul = $('#members');
+  ul.innerHTML = '';
+  for (const m of members) {
+    const li = document.createElement('li');
+    const b = document.createElement('button');
+    b.textContent = `${m.name}${m.date_of_birth ? ' · born ' + m.date_of_birth : ''}`;
+    b.setAttribute('aria-current', String(current?.id === m.id));
+    b.onclick = () => select(m);
+    li.append(b);
+    ul.append(li);
+  }
+}
+
+$('#member-form').onsubmit = async e => {
+  e.preventDefault();
+  const body = Object.fromEntries(new FormData(e.target));
+  for (const k in body) if (body[k] === '') delete body[k];  // omit empty → null
+  const res = await post('/family-members', body);
+  if (!res.ok) return status(`Add failed: ${await res.text()}`, true);
+  e.target.reset();
+  status('Member added.');
+  loadMembers();
+};
+
+async function select(m) {
+  current = m;
+  $('#rx').hidden = false;
+  $('#rx-title').textContent = `Prescriptions — ${m.name}`;
+  await loadMembers();
+  await loadRx();
+}
+
+async function loadRx() {
+  const res = await fetch(`/family-members/${current.id}/prescriptions`);
+  if (!res.ok) return status(`Load failed: ${await res.text()}`, true);
+  const list = await res.json();
+  const box = $('#prescriptions');
+  box.innerHTML = list.length ? '' : '<p class="meta">No prescriptions yet.</p>';
+  for (const p of list) {
+    const art = document.createElement('article');
+    const meds = p.medicines.map(x => `<li>${esc(x.medicine_name)}${x.dosage ? ' — ' + esc(x.dosage) : ''}${x.frequency ? ', ' + esc(x.frequency) : ''}${x.duration ? ', ' + esc(x.duration) : ''}${x.instructions ? '<br><small>' + esc(x.instructions) + '</small>' : ''}</li>`).join('');
+    art.innerHTML = `
+      <h3>${esc(p.prescription_date ?? 'Undated')}${p.doctor_name ? ' · ' + esc(p.doctor_name) : ''}</h3>
+      <p class="meta">${[p.hospital_name, p.diagnosis].filter(Boolean).map(esc).join(' · ')}</p>
+      ${meds ? `<ul class="meds">${meds}</ul>` : ''}
+      ${p.notes ? `<p class="meta">${esc(p.notes)}</p>` : ''}`;
+    box.append(art);
+  }
+}
+
+$('#upload-form').onsubmit = async e => {
+  e.preventDefault();
+  const res = await post(`/family-members/${current.id}/prescriptions/upload`, new FormData(e.target), true);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) return status(`Upload failed: ${await res.text()}`, true);
+  e.target.reset();
+  status(data.ocr_text ? `Uploaded. OCR: ${data.ocr_text.slice(0, 120)}` : 'Uploaded.');
+  loadRx();
+};
+
+loadMembers().catch(() => status('Backend unreachable.', true));
+</script>
+</body>
+</html>

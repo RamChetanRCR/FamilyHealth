@@ -1,8 +1,10 @@
+import os
+
 from pathlib import Path
 import shutil
 from uuid import uuid4
 
-STORAGE_DIR = Path("/data/documents")
+STORAGE_DIR = Path(os.getenv("STORAGE_DIR", "/data/documents"))
 
 
 def save_document(file):

@@ -4,4 +4,22 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "sqlalchemy",
+    "psycopg[binary]",
+    "python-multipart",
+    "pytesseract",
+    "Pillow",
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+# ponytail: package lives under backend/, one pyproject is the only dep source.
+# move to src/ layout + a lockfile (uv/poetry) when there is more than one package.
+[tool.setuptools]
+packages = ["app"]
+package-dir = { "" = "backend" }
