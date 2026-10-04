@@ -24,7 +24,7 @@ Family UI
    ↓
 FastAPI Backend
    ↓
-PostgreSQL
+SQLite
    +
 Private Document Storage
    ↓

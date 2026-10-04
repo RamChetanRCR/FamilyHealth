@@ -22,7 +22,7 @@ Actual server ports are commented out in `docker-compose.yml` (`8100` backend,
 ## Run (Docker)
 
 ```bash
-cp .env.example .env     # set FH_DATA_DIR + POSTGRES_PASSWORD (required, no fallback)
+cp .env.example .env     # set FH_DATA_DIR (required, no fallback)
 docker compose up --build
 ```
 
@@ -38,10 +38,9 @@ is always migrated to the latest revision on start.
 ```bash
 python3.13 -m venv .venv && . .venv/bin/activate
 pip install -e .
-createdb family_health   # once
 
-export DATABASE_URL=postgresql+psycopg:///family_health STORAGE_DIR=/tmp/fh-docs
-alembic upgrade head        # create/upgrade schema (not create_all)
+export STORAGE_DIR=/tmp/fh-docs            # DATABASE_URL defaults to ./family_health.db
+alembic upgrade head        # create/upgrade the SQLite schema (not create_all)
 uvicorn app.main:app --host 127.0.0.1 --port 18100 &
 
 python frontend/server.py   # defaults: 127.0.0.1:18080 → API 18100
@@ -49,7 +48,7 @@ python frontend/server.py   # defaults: 127.0.0.1:18080 → API 18100
 
 Python 3.13+ (`.python-version`). Backend image installs `tesseract-ocr`; image
 uploads are OCR'd on upload, PDFs are stored without OCR. Tests: `pytest` (uses
-SQLite, applies the migrations, mocks OCR — no Postgres or Tesseract needed).
+SQLite, applies the migrations, mocks OCR — no Tesseract needed).
 
 **Existing database created by the old `create_all`/`init_db`?** One-time, to
 adopt migrations without touching data:
@@ -61,19 +60,18 @@ columns). A brand-new database just needs `alembic upgrade head`.
 
 | Variable | Default | Used by | What |
 |---|---|---|---|
-| `FH_DATA_DIR` | — (required) | compose | host dir for uploads + postgres data; prod `/data/tech-station/family-health/data`. No `./data` fallback. |
-| `POSTGRES_PASSWORD` | — (required) | compose | DB password; set in `.env` (gitignored). Compose refuses to start if unset. |
+| `FH_DATA_DIR` | — (required) | compose | host dir mounted to `/data`, holding the SQLite DB + uploads; prod `/data/tech-station/family-health/data`. No `./data` fallback. |
 | `STORAGE_DIR` | `/data/documents` | backend | where uploaded documents are written |
-| `DATABASE_URL` | `...@postgres:5432/family_health` | backend | SQLAlchemy URL |
+| `DATABASE_URL` | `sqlite:///./family_health.db` | backend | SQLAlchemy URL (compose sets `sqlite:////data/family_health.db`) |
 | `API_URL` | `http://127.0.0.1:18100` | frontend | backend to proxy to (compose sets `http://backend:8000`) |
 | `HOST` / `PORT` | `127.0.0.1` / `18080` | frontend | bind address (compose sets `0.0.0.0:80`) |
 
 ```bash
-FH_DATA_DIR=/srv/familyhealth POSTGRES_PASSWORD=secret docker compose up -d
+FH_DATA_DIR=/srv/familyhealth docker compose up -d
 ```
 
-Container-internal paths (don't change): volume target `/data/documents`, and
-the compose network host `postgres`.
+Container-internal paths (don't change): the volume mount target `/data` (holds
+`family_health.db` and `documents/`).
 
 ## API
 
