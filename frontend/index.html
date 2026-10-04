@@ -129,8 +129,8 @@
   <p class="empty" id="members-empty" hidden>No members yet — add the first one.</p>
   <form id="member-form">
     <input name="name" placeholder="Name" aria-label="Name" required>
-    <input name="date_of_birth" type="date" aria-label="Date of birth" title="Date of birth">
-    <select name="gender" aria-label="Gender" title="Gender">
+    <input name="date_of_birth" type="date" aria-label="Date of birth">
+    <select name="gender" aria-label="Gender">
       <option value="">Gender…</option>
       <option>female</option>
       <option>male</option>
@@ -143,10 +143,10 @@
 <section id="rx" hidden>
   <div class="rx-head">
     <h2 id="rx-title" style="margin:0">Prescriptions</h2>
-    <button id="print-btn" class="no-print" type="button" onclick="window.print()">Print for doctor</button>
+    <button id="print-btn" type="button" onclick="window.print()">Print for doctor</button>
   </div>
   <form id="upload-form">
-    <input type="date" name="prescription_date" id="rx-date" aria-label="Prescription date" title="Prescription date">
+    <input type="date" name="prescription_date" id="rx-date" aria-label="Prescription date">
     <input type="file" name="file" accept="image/jpeg,image/png,application/pdf" required aria-label="Prescription file">
     <button class="primary">Upload</button>
   </form>
@@ -162,7 +162,7 @@
     <input name="medicine_name" placeholder="Medicine name" aria-label="Medicine name" required>
     <input name="quantity" type="number" min="0" placeholder="Qty" aria-label="Quantity" style="width:6rem">
     <input name="unit" placeholder="Unit (tablets…)" aria-label="Unit" style="width:9rem">
-    <input name="expiry_date" type="date" aria-label="Expiry date" title="Expiry date">
+    <input name="expiry_date" type="date" aria-label="Expiry date">
     <button class="primary">Add</button>
   </form>
 </section>

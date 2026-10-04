@@ -304,7 +304,6 @@ def upload_prescription(
             "message": "Prescription uploaded",
             "family_member_id": member_id,
             "prescription_id": prescription.id,
-            "filename": file.filename,
             "stored_path": path,
             "prescription_date": prescription.prescription_date,
             "ocr_text": ocr_text,

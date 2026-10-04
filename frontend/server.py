@@ -26,7 +26,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         if self.command in ("POST", "PUT", "PATCH"):
             body = self.rfile.read(int(self.headers.get("Content-Length") or 0))
         req = urllib.request.Request(API + self.path, data=body, method=self.command)
-        for header in ("Content-Type", "Accept", "Authorization"):
+        for header in ("Content-Type", "Accept"):
             if self.headers.get(header):
                 req.add_header(header, self.headers[header])
         try:
