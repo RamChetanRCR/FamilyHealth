@@ -12,7 +12,7 @@ HOST = os.getenv("HOST", "127.0.0.1")
 PORT = int(os.getenv("PORT", "18080"))
 ROOT = pathlib.Path(__file__).parent
 PREFIXES = (
-    "/family-members", "/prescriptions", "/inventory",
+    "/family-members", "/inventory",
     "/health", "/docs", "/redoc", "/openapi.json",
 )
 

@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -58,6 +58,12 @@ class Prescription(Base):
         default=datetime.utcnow,
     )
     ocr_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # OCR status: last extraction error (None once it succeeds or is corrected),
+    # and whether ocr_text was manually edited vs. machine-generated.
+    ocr_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ocr_edited: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default="0"
+    )
 
 
 class PrescriptionMedicine(Base):

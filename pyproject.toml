@@ -8,6 +8,7 @@ dependencies = [
     "fastapi",
     "uvicorn[standard]",
     "sqlalchemy",
+    "alembic",
     "psycopg[binary]",
     "python-multipart",
     "pytesseract",

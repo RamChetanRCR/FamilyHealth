@@ -235,7 +235,8 @@ async function loadRx() {
     const art = document.createElement('article');
     art.className = 'rx';
     const meds = p.medicines.map(x => `<li>${esc(x.medicine_name)}${x.dosage ? ' — ' + esc(x.dosage) : ''}${x.frequency ? ', ' + esc(x.frequency) : ''}${x.duration ? ', ' + esc(x.duration) : ''}${x.instructions ? '<br><small>' + esc(x.instructions) + '</small>' : ''}</li>`).join('');
-    const docUrl = `/prescriptions/${p.id}/document`;
+    const base = `/family-members/${current.id}/prescriptions/${p.id}`;
+    const docUrl = `${base}/document`;
     art.dataset.search = [
       p.prescription_date, p.created_at, p.doctor_name, p.hospital_name, p.diagnosis, p.notes,
       p.ocr_text, ...p.medicines.flatMap(x => [x.medicine_name, x.dosage, x.frequency, x.duration, x.instructions]),
@@ -249,8 +250,9 @@ async function loadRx() {
              onerror="this.outerHTML='<a href=&quot;${docUrl}&quot;>Open document</a>'">
       </div>
       ${meds ? `<ul class="meds">${meds}</ul>` : ''}
-      ${p.ocr_text ? `<details class="ocr" open><summary>Extracted text</summary><pre>${esc(p.ocr_text)}</pre></details>` : ''}
-      ${p.notes ? `<p class="${p.notes.startsWith('OCR failed') ? 'warn' : 'meta'}">${esc(p.notes)}</p>` : ''}
+      ${p.ocr_text ? `<details class="ocr" open><summary>Extracted text${p.ocr_edited ? ' (edited)' : ''}</summary><pre>${esc(p.ocr_text)}</pre></details>` : ''}
+      ${p.ocr_error ? `<p class="warn">OCR failed: ${esc(p.ocr_error)}</p>` : ''}
+      ${p.notes ? `<p class="meta">${esc(p.notes)}</p>` : ''}
       <form class="rx-edit" hidden>
         <input type="date" name="prescription_date" value="${p.prescription_date ?? ''}" aria-label="Prescription date">
         <input name="doctor_name" placeholder="Doctor" value="${esc(p.doctor_name ?? '')}" aria-label="Doctor">
@@ -263,6 +265,7 @@ async function loadRx() {
         </div>
       </form>
       <div class="rx-actions">
+        <button class="mini" type="button" data-ocr>Re-run OCR</button>
         <button class="mini" type="button" data-edit>Edit</button>
         <button class="mini danger" type="button" data-del>Delete</button>
       </div>`;
@@ -271,9 +274,16 @@ async function loadRx() {
     const editForm = art.querySelector('.rx-edit');
     art.querySelector('[data-edit]').onclick = () => { editForm.hidden = !editForm.hidden; };
     art.querySelector('[data-cancel]').onclick = () => { editForm.hidden = true; };
+    art.querySelector('[data-ocr]').onclick = async () => {
+      const res = await post(`${base}/ocr`, {});
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return status(`OCR retry failed: ${await res.text()}`, true);
+      status(data.ocr_error ? `OCR still failing: ${data.ocr_error}` : 'OCR re-run complete.', !!data.ocr_error);
+      loadRx();
+    };
     art.querySelector('[data-del]').onclick = async () => {
       if (!confirm('Delete this prescription and its document? This cannot be undone.')) return;
-      const res = await fetch(`/prescriptions/${p.id}`, { method: 'DELETE' });
+      const res = await fetch(base, { method: 'DELETE' });
       if (!res.ok) return status(`Delete failed: ${await res.text()}`, true);
       status('Prescription deleted.');
       loadRx();
@@ -282,7 +292,7 @@ async function loadRx() {
       e.preventDefault();
       const body = Object.fromEntries(new FormData(e.target));
       if (body.prescription_date === '') body.prescription_date = null;
-      const res = await fetch(`/prescriptions/${p.id}`, {
+      const res = await fetch(base, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

@@ -7,19 +7,35 @@ from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 
 from app.database import SessionLocal, engine
-from app.storage import save_document, STORAGE_DIR
+from app.storage import save_document, validate_document, STORAGE_DIR
 from app.ocr import extract_text
 from app.models import (
-    Base,
     FamilyMember,
     MedicineInventory,
     Prescription,
     PrescriptionMedicine,
 )
 
-Base.metadata.create_all(bind=engine)
-
 app = FastAPI(title="Family Health API")
+
+
+def _owned_prescription(session, member_id: int, prescription_id: int) -> Prescription:
+    """Load a prescription only if it belongs to member_id — the single
+    member→prescription access boundary. Later auth checks the caller here."""
+    rx = session.get(Prescription, prescription_id)
+    if rx is None or rx.family_member_id != member_id:
+        raise HTTPException(404, "Prescription not found")
+    return rx
+
+
+def _run_ocr(path: str, content_type: str | None) -> tuple[str | None, str | None]:
+    """(ocr_text, ocr_error) — never raises; OCR failure must not lose the document."""
+    if not (content_type or "").startswith("image/"):
+        return None, None  # PDFs/others stored without OCR; not an error
+    try:
+        return extract_text(path), None
+    except Exception as exc:  # ponytail: broad — any OCR failure keeps doc+record
+        return None, str(exc) or type(exc).__name__
 
 
 class FamilyMemberCreate(BaseModel):
@@ -203,6 +219,8 @@ def get_member_prescriptions(member_id: int):
                     "diagnosis": prescription.diagnosis,
                     "notes": prescription.notes,
                     "ocr_text": prescription.ocr_text,
+                    "ocr_error": prescription.ocr_error,
+                    "ocr_edited": prescription.ocr_edited,
                     "medicines": [
                         {
                             "medicine_name": medicine.medicine_name,
@@ -254,28 +272,27 @@ def upload_prescription(
 
         path = save_document(file)
 
-        # ponytail: broad except — any OCR failure must keep the document and
-        # the record; narrow to (PIL.UnidentifiedImageError,
-        # pytesseract.TesseractNotFoundError) once failure types are audited.
-        ocr_text = None
-        ocr_error = None
-        if file.content_type.startswith("image/"):
-            try:
-                ocr_text = extract_text(path)
-            except Exception as exc:
-                ocr_error = str(exc) or type(exc).__name__
+        # Content, not just the client-declared MIME type: reject renamed/corrupt
+        # files and never keep them on disk.
+        try:
+            validate_document(path, file.content_type)
+        except ValueError as exc:
+            Path(path).unlink(missing_ok=True)
+            raise HTTPException(400, f"Invalid file: {exc}")
 
-        notes = None
-        if ocr_error:
-            notes = f"OCR failed: {ocr_error}"  # kept for audit/reprocessing
-        elif file.content_type == "application/pdf":
-            notes = "PDF stored; text extraction not implemented yet."
+        ocr_text, ocr_error = _run_ocr(path, file.content_type)
+        notes = (
+            "PDF stored; text extraction not implemented yet."
+            if file.content_type == "application/pdf"
+            else None
+        )
 
         prescription = Prescription(
             family_member_id=member_id,
             document_path=path,
             prescription_date=rx_date,
             ocr_text=ocr_text,
+            ocr_error=ocr_error,
             notes=notes,
         )
 
@@ -306,25 +323,55 @@ class PrescriptionUpdate(BaseModel):
     ocr_text: str | None = None
 
 
-@app.patch("/prescriptions/{prescription_id}")
-def update_prescription(prescription_id: int, update: PrescriptionUpdate):
+@app.patch("/family-members/{member_id}/prescriptions/{prescription_id}")
+def update_prescription(
+    member_id: int, prescription_id: int, update: PrescriptionUpdate
+):
     with SessionLocal() as session:
-        prescription = session.get(Prescription, prescription_id)
-        if prescription is None:
-            raise HTTPException(404, "Prescription not found")
+        prescription = _owned_prescription(session, member_id, prescription_id)
 
-        for field, value in update.model_dump(exclude_unset=True).items():
+        changes = update.model_dump(exclude_unset=True)
+        for field, value in changes.items():
             setattr(prescription, field, value)
+        if "ocr_text" in changes:  # manual correction: flag it, clear stale error
+            prescription.ocr_edited = True
+            prescription.ocr_error = None
         session.commit()
-        return {"id": prescription_id, "updated": sorted(update.model_dump(exclude_unset=True))}
+        return {"id": prescription_id, "updated": sorted(changes)}
 
 
-@app.delete("/prescriptions/{prescription_id}")
-def delete_prescription(prescription_id: int):
+@app.post("/family-members/{member_id}/prescriptions/{prescription_id}/ocr")
+def retry_ocr(member_id: int, prescription_id: int):
+    """Re-run OCR on the already-stored document. No new record, no re-upload."""
     with SessionLocal() as session:
-        prescription = session.get(Prescription, prescription_id)
-        if prescription is None:
-            raise HTTPException(404, "Prescription not found")
+        prescription = _owned_prescription(session, member_id, prescription_id)
+
+        path = Path(prescription.document_path).resolve()
+        if not (
+            path.is_relative_to(STORAGE_DIR.resolve())
+            and path.suffix.lower() in ALLOWED_DOCUMENT_EXTENSIONS
+            and path.is_file()
+        ):
+            raise HTTPException(404, "Stored document not available")
+        if path.suffix.lower() == ".pdf":
+            raise HTTPException(400, "OCR not supported for PDF documents")
+
+        ocr_text, ocr_error = _run_ocr(str(path), "image/")
+        prescription.ocr_text = ocr_text
+        prescription.ocr_error = ocr_error
+        prescription.ocr_edited = False  # machine-generated again
+        session.commit()
+        return {
+            "id": prescription_id,
+            "ocr_text": ocr_text,
+            "ocr_error": ocr_error,
+        }
+
+
+@app.delete("/family-members/{member_id}/prescriptions/{prescription_id}")
+def delete_prescription(member_id: int, prescription_id: int):
+    with SessionLocal() as session:
+        prescription = _owned_prescription(session, member_id, prescription_id)
 
         document_path = Path(prescription.document_path).resolve()
         session.execute(
@@ -341,12 +388,10 @@ def delete_prescription(prescription_id: int):
     return {"deleted": prescription_id}
 
 
-@app.get("/prescriptions/{prescription_id}/document")
-def get_prescription_document(prescription_id: int):
+@app.get("/family-members/{member_id}/prescriptions/{prescription_id}/document")
+def get_prescription_document(member_id: int, prescription_id: int):
     with SessionLocal() as session:
-        prescription = session.get(Prescription, prescription_id)
-        if prescription is None:
-            raise HTTPException(404, "Prescription not found")
+        prescription = _owned_prescription(session, member_id, prescription_id)
 
         path = Path(prescription.document_path).resolve()
         # never serve anything outside STORAGE_DIR or with a dangerous suffix
